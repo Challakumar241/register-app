@@ -62,8 +62,11 @@ pipeline {
         stage("Build & Push Docker Image") {
             steps {
                 script {
+                    // Build Docker image
+                    docker_image = docker.build("${IMAGE_NAME}:${IMAGE_TAG}")
+
+                    // Login and push Docker image with credentials stored in Jenkins ('dockerhub')
                     docker.withRegistry('https://index.docker.io/v1/', 'dockerhub') {
-                        docker_image = docker.build("${IMAGE_NAME}")
                         docker_image.push("${IMAGE_TAG}")
                         docker_image.push("latest")
                     }
