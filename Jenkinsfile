@@ -2,17 +2,15 @@ pipeline {
     agent { label 'Jenkins-Agent' }
 
     tools {
-        jdk 'java17'         // Must match Global Tool Configuration
-        maven 'maven3'       // Must match Global Tool Configuration
+        jdk 'java17'         // Matches Global Tool Configuration
+        maven 'maven3'       // Matches Global Tool Configuration
     }
 
     environment {
         APP_NAME = "register-app-pipeline"
         RELEASE = "1.0.0"
-        DOCKER_USER = "challakumar241"
-        DOCKER_PASS = credentials('dockerhub')  
-        IMAGE_NAME = "${DOCKER_USER}/${APP_NAME}"
         IMAGE_TAG = "${RELEASE}-${BUILD_NUMBER}"
+        IMAGE_NAME = "challakumar241/${APP_NAME}" // Adjust username as needed
         JENKINS_API_TOKEN = credentials("JENKINS_API_TOKEN")
     }
 
@@ -31,13 +29,13 @@ pipeline {
 
         stage("Build Application") {
             steps {
-                sh "mvn clean package"
+                sh 'mvn clean package'
             }
         }
 
         stage("Test Application") {
             steps {
-                sh "mvn test"
+                sh 'mvn test'
             }
         }
 
@@ -45,7 +43,7 @@ pipeline {
             steps {
                 script {
                     withSonarQubeEnv(credentialsId: 'jenkins-sonarqube-token') {
-                        sh "mvn sonar:sonar"
+                        sh 'mvn sonar:sonar'
                     }
                 }
             }
@@ -62,16 +60,16 @@ pipeline {
         stage("Build & Push Docker Image") {
             steps {
                 script {
-                    sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
-
-                    // Use BuildKit (optional)
-                    sh '''
-                        export DOCKER_BUILDKIT=1
-                        docker build -t $IMAGE_NAME:$IMAGE_TAG .
-                        docker tag $IMAGE_NAME:$IMAGE_TAG $IMAGE_NAME:latest
-                        docker push $IMAGE_NAME:$IMAGE_TAG
-                        docker push $IMAGE_NAME:latest
-                    '''
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh '''
+                            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                            export DOCKER_BUILDKIT=1
+                            docker build -t "$DOCKER_USER/$APP_NAME:$IMAGE_TAG" .
+                            docker tag "$DOCKER_USER/$APP_NAME:$IMAGE_TAG" "$DOCKER_USER/$APP_NAME:latest"
+                            docker push "$DOCKER_USER/$APP_NAME:$IMAGE_TAG"
+                            docker push "$DOCKER_USER/$APP_NAME:latest"
+                        '''
+                    }
                 }
             }
         }
@@ -80,9 +78,9 @@ pipeline {
             steps {
                 sh '''
                     docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-                    aquasec/trivy image $IMAGE_NAME:latest \
-                    --no-progress --scanners vuln --exit-code 0 \
-                    --severity HIGH,CRITICAL --format table
+                        aquasec/trivy image "$IMAGE_NAME:latest" \
+                        --no-progress --scanners vuln --exit-code 0 \
+                        --severity HIGH,CRITICAL --format table || true
                 '''
             }
         }
@@ -90,8 +88,8 @@ pipeline {
         stage("Cleanup Docker Artifacts") {
             steps {
                 sh '''
-                    docker rmi $IMAGE_NAME:$IMAGE_TAG || true
-                    docker rmi $IMAGE_NAME:latest || true
+                    docker rmi "$IMAGE_NAME:$IMAGE_TAG" || true
+                    docker rmi "$IMAGE_NAME:latest" || true
                 '''
             }
         }
@@ -100,10 +98,10 @@ pipeline {
             steps {
                 script {
                     sh """
-                        curl -v -k --user clouduser:${JENKINS_API_TOKEN} -X POST \
-                        -H 'cache-control: no-cache' \
-                        -H 'content-type: application/x-www-form-urlencoded' \
-                        --data 'IMAGE_TAG=${IMAGE_TAG}' \
+                        curl -v -k --user clouduser:${JENKINS_API_TOKEN} -X POST \\
+                        -H 'cache-control: no-cache' \\
+                        -H 'content-type: application/x-www-form-urlencoded' \\
+                        --data 'IMAGE_TAG=${IMAGE_TAG}' \\
                         'http://ec2-54-234-152-100.compute-1.amazonaws.com:8080/job/gitops-register-app-cd/buildWithParameters?token=gitops-token'
                     """
                 }
