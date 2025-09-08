@@ -33,6 +33,6 @@
 
    <h1> Thank You </h1>
    <br>
-   <h1> From by Challa Lakshmi Kumar. </h1>
+   <h1> From Challa Lakshmi Kumar. </h1>
    
 </form>
