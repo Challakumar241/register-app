@@ -60,19 +60,20 @@ pipeline {
         }
 
         stage("Build & Push Docker Image") {
-            steps {
-                script {
-                    // Build Docker image
-                    docker_image = docker.build("${IMAGE_NAME}:${IMAGE_TAG}")
+    steps {
+        script {
+            // Build Docker image with tag
+            def docker_image = docker.build("${IMAGE_NAME}:${IMAGE_TAG}")
 
-                    // Login and push Docker image with credentials stored in Jenkins ('dockerhub')
-                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub') {
-                        docker_image.push("${IMAGE_TAG}")
-                        docker_image.push("latest")
-                    }
-                }
+            // Use docker.withRegistry to login to Docker Hub using credentials from Jenkins
+            docker.withRegistry('https://index.docker.io/v1/', 'dockerhub') {
+                docker_image.push("${IMAGE_TAG}")  // Push with tag
+                docker_image.push('latest')         // Push latest tag
             }
         }
+    }
+}
+
 
         stage("Trivy Scan") {
             steps {
