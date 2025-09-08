@@ -2,15 +2,15 @@ pipeline {
     agent { label 'Jenkins-Agent' }
 
     tools {
-        jdk 'java17'
-        maven 'maven3'
+        jdk 'java17'         // Must match Global Tool Configuration
+        maven 'maven3'       // Must match Global Tool Configuration
     }
 
     environment {
         APP_NAME = "register-app-pipeline"
         RELEASE = "1.0.0"
         DOCKER_USER = "challakumar241"
-        DOCKER_PASS = 'dockerhub'
+        DOCKER_PASS = 'dockerhub'    
         IMAGE_NAME = "${DOCKER_USER}/${APP_NAME}"
         IMAGE_TAG = "${RELEASE}-${BUILD_NUMBER}"
         JENKINS_API_TOKEN = credentials("JENKINS_API_TOKEN")
@@ -62,37 +62,51 @@ pipeline {
         stage("Build & Push Docker Image") {
             steps {
                 script {
-                    docker.withRegistry('', DOCKER_PASS) {
-                        def docker_image = docker.build("${IMAGE_NAME}")
-                        docker_image.push("${IMAGE_TAG}")
-                        docker_image.push('latest')
-                    }
+                    sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
+
+                    // Use BuildKit (optional)
+                    sh '''
+                        export DOCKER_BUILDKIT=1
+                        docker build -t $IMAGE_NAME:$IMAGE_TAG .
+                        docker tag $IMAGE_NAME:$IMAGE_TAG $IMAGE_NAME:latest
+                        docker push $IMAGE_NAME:$IMAGE_TAG
+                        docker push $IMAGE_NAME:latest
+                    '''
                 }
             }
         }
 
         stage("Trivy Scan") {
             steps {
-                sh 'docker run -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image challakumar241/register-app-pipeline:latest --no-progress --scanners vuln --exit-code 0 --severity HIGH,CRITICAL --format table'
+                sh '''
+                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                    aquasec/trivy image $IMAGE_NAME:latest \
+                    --no-progress --scanners vuln --exit-code 0 \
+                    --severity HIGH,CRITICAL --format table
+                '''
             }
         }
 
-        stage("Cleanup Artifacts") {
+        stage("Cleanup Docker Artifacts") {
             steps {
-                sh "docker rmi ${IMAGE_NAME}:${IMAGE_TAG} || true"
-                sh "docker rmi ${IMAGE_NAME}:latest || true"
+                sh '''
+                    docker rmi $IMAGE_NAME:$IMAGE_TAG || true
+                    docker rmi $IMAGE_NAME:latest || true
+                '''
             }
         }
 
         stage("Trigger CD Pipeline") {
             steps {
-                sh """
-                    curl -v -k --user clouduser:${JENKINS_API_TOKEN} -X POST \
-                    -H 'cache-control: no-cache' \
-                    -H 'content-type: application/x-www-form-urlencoded' \
-                    --data 'IMAGE_TAG=${IMAGE_TAG}' \
-                    'http://ec2-54-234-152-100.compute-1.amazonaws.com:8080/job/gitops-register-app-cd/buildWithParameters?token=gitops-token'
-                """
+                script {
+                    sh """
+                        curl -v -k --user clouduser:${JENKINS_API_TOKEN} -X POST \
+                        -H 'cache-control: no-cache' \
+                        -H 'content-type: application/x-www-form-urlencoded' \
+                        --data 'IMAGE_TAG=${IMAGE_TAG}' \
+                        'http://ec2-54-234-152-100.compute-1.amazonaws.com:8080/job/gitops-register-app-cd/buildWithParameters?token=gitops-token'
+                    """
+                }
             }
         }
     }
@@ -116,4 +130,3 @@ pipeline {
         }
     }
 }
-
