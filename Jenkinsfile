@@ -2,15 +2,15 @@ pipeline {
     agent { label 'Jenkins-Agent' }
 
     tools {
-        jdk 'java17'         // Matches Global Tool Configuration
-        maven 'maven3'       // Matches Global Tool Configuration
+        jdk 'java17'         // Make sure this matches your Jenkins Global Tool Configuration
+        maven 'maven3'       // Make sure this matches your Jenkins Global Tool Configuration
     }
 
     environment {
         APP_NAME = "register-app-pipeline"
         RELEASE = "1.0.0"
         IMAGE_TAG = "${RELEASE}-${BUILD_NUMBER}"
-        IMAGE_NAME = "challakumar241/${APP_NAME}" // Adjust username as needed
+        IMAGE_NAME = "challakumar241/${APP_NAME}"
         JENKINS_API_TOKEN = credentials("JENKINS_API_TOKEN")
     }
 
@@ -60,12 +60,19 @@ pipeline {
         stage("Build & Push Docker Image") {
             steps {
                 script {
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: 'dockerhub',
+                            usernameVariable: 'DOCKER_USER',
+                            passwordVariable: 'DOCKER_PASS'
+                        )
+                    ]) {
                         sh '''
                             echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                            export DOCKER_BUILDKIT=1
+
                             docker build -t "$DOCKER_USER/$APP_NAME:$IMAGE_TAG" .
                             docker tag "$DOCKER_USER/$APP_NAME:$IMAGE_TAG" "$DOCKER_USER/$APP_NAME:latest"
+
                             docker push "$DOCKER_USER/$APP_NAME:$IMAGE_TAG"
                             docker push "$DOCKER_USER/$APP_NAME:latest"
                         '''
@@ -118,6 +125,7 @@ pipeline {
                 to: "challakumar241@gmail.com"
             )
         }
+
         success {
             emailext(
                 body: '${SCRIPT, template="groovy-html.template"}',
@@ -128,3 +136,4 @@ pipeline {
         }
     }
 }
+
