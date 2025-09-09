@@ -2,8 +2,8 @@ pipeline {
     agent { label 'Jenkins-Agent' }
 
     tools {
-        jdk 'Java17'
-        maven 'Maven3'
+        jdk 'java17'
+        maven 'maven3'
     }
 
     environment {
@@ -20,7 +20,7 @@ pipeline {
 
         stage("Checkout from SCM") {
             steps {
-                checkout scm
+                git branch: 'main', credentialsId: 'github', url: 'https://github.com/Challakumar241/register-app'
             }
         }
 
@@ -36,7 +36,6 @@ pipeline {
             }
         }
 
-        // ✅ SonarQube Analysis
         stage("SonarQube Analysis") {
             steps {
                 script {
@@ -48,5 +47,3 @@ pipeline {
         }
     }
 }
-
-
