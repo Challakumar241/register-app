@@ -1,70 +1,78 @@
 pipeline {
-  agent any
+    agent { label 'Jenkins-Agent' }
 
-  tools {
-    jdk 'Java17'
-    maven 'Maven3'
-  }
-
-  environment {
-    DOCKER_IMAGE = "challakumar241/challakumar241:${BUILD_NUMBER}"
-    GIT_REPO_NAME = "register-app"
-    GIT_USER_NAME = "Challakumar241"
-  }
-
-  stages {
-    stage('Cleanup Workspace') {
-      steps {
-        cleanWs()
-      }
+    tools {
+        jdk 'Java17'
+        maven 'Maven3'
     }
 
-    stage('Checkout') {
-      steps {
-        git branch: 'main', url: "https://github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git", credentialsId: 'github'
-      }
+    environment {
+        APP_NAME = "register-app-pipeline"
+        RELEASE = "1.0.0"
+        DOCKER_USER = "challakumar241"
+        IMAGE_NAME = "${DOCKER_USER}/${APP_NAME}"
+        IMAGE_TAG = "${RELEASE}-${BUILD_NUMBER}"
     }
 
-    stage('Build and Test') {
-      steps {
-        sh 'mvn clean package'
-        sh 'mvn test'
-      }
-    }
-
-    stage('Build and Push Docker Image') {
-      steps {
-        script {
-          def imageTag = "challakumar241/challakumar241:${BUILD_NUMBER}"
-          def latestTag = "challakumar241/challakumar241:latest"
-
-          sh "docker build -t ${imageTag} ."
-          sh "docker tag ${imageTag} ${latestTag}"
-
-          docker.withRegistry('https://index.docker.io/v1/', 'dockerhub') {
-            docker.image(imageTag).push()
-            docker.image(latestTag).push()
-          }
+    stages {
+        stage("Cleanup Workspace") {
+            steps {
+                cleanWs()
+            }
         }
-      }
-    }
 
-    stage('Trivy Security Scan') {
-      steps {
-        sh """
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-          aquasec/trivy image challakumar241/challakumar241:latest \
-          --no-progress --scanners vuln --exit-code 0 \
-          --severity HIGH,CRITICAL --format table
-        """
-      }
-    }
+        stage("Checkout from SCM") {
+            steps {
+                git branch: 'main', credentialsId: 'github', url: 'https://github.com/Challakumar241/register-app'
+            }
+        }
 
-    stage('Cleanup Docker Images') {
-      steps {
-        sh "docker rmi challakumar241/challakumar241:${BUILD_NUMBER} || true"
-        sh "docker rmi challakumar241/challakumar241:latest || true"
-      }
+        stage("Build Application") {
+            steps {
+                sh "mvn clean package"
+            }
+        }
+
+        stage("Test Application") {
+            steps {
+                sh "mvn test"
+            }
+        }
+
+        stage("SonarQube Analysis") {
+            steps {
+                script {
+                    withSonarQubeEnv(credentialsId: 'jenkins-sonarqube-token') {
+                        sh "mvn sonar:sonar"
+                    }
+                }
+            }
+        }
+
+        stage("Quality Gate") {
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        stage("Build & Push Docker Image") {
+            steps {
+                script {
+                    def imageWithTag = "${IMAGE_NAME}:${IMAGE_TAG}"
+                    def latestTag = "${IMAGE_NAME}:latest"
+
+                    // Build the image with tag
+                    def dockerImage = docker.build(imageWithTag)
+
+                    // Push image using DockerHub credentials
+                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub') {
+                        dockerImage.push("${IMAGE_TAG}")
+                        dockerImage.push("latest")
+                    }
+                }
+            }
+        }
     }
-  }
 }
