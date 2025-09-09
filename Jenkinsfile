@@ -57,18 +57,19 @@ pipeline {
 
         stage("Build & Push Docker Image") {
             steps {
-                dir('challakumar241/challakumar241') {
-                    script {
-                        def dockerImage = "${IMAGE_NAME}:${IMAGE_TAG}"
-                        sh "docker build -t ${dockerImage} ."
-                        docker.withRegistry('https://index.docker.io/v1/', 'dockerhub') {
-                            docker.image(dockerImage).push()
-                            docker.image(dockerImage).push('latest')
-                        }
+                script {
+                    def dockerImage = "${IMAGE_NAME}:${IMAGE_TAG}"
+                    sh "docker build -t ${dockerImage} ."
+                    
+                    // Use Jenkins DockerHub credentials ID
+                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub') {
+                        docker.image(dockerImage).push()
+                        docker.image(dockerImage).push('latest')
                     }
                 }
             }
         }
+
 
         stage("Trivy Scan") {
             steps {
