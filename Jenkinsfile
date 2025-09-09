@@ -10,6 +10,7 @@ pipeline {
         APP_NAME = "register-app-pipeline"
         RELEASE = "1.0.0"
         DOCKER_USER = "challakumar241"
+        DOCKER_PASS = credentials('dockerhub')  // Use Jenkins credentials ID for Docker Hub password
         IMAGE_NAME = "${DOCKER_USER}/${APP_NAME}"
         IMAGE_TAG = "${RELEASE}-${BUILD_NUMBER}"
     }
@@ -57,42 +58,28 @@ pipeline {
             }
         }
 
+        stage("Debug User & Groups") {
+            steps {
+                sh 'whoami'
+                sh 'groups'
+            }
+        }
+
         stage("Build & Push Docker Image") {
             steps {
                 script {
-                    def docker_image = docker.build("${IMAGE_NAME}:${IMAGE_TAG}")
+                    def dockerImage = docker.build("${IMAGE_NAME}:${IMAGE_TAG}")
 
                     docker.withRegistry('https://index.docker.io/v1/', 'dockerhub') {
-                        docker_image.push("${IMAGE_TAG}")  // Push with tag
-                        docker_image.push("latest")        // Push latest tag
+                        dockerImage.push("${IMAGE_TAG}")
+                        dockerImage.push('latest')
                     }
-                }
-            }
-        }
-
-        stage("Trivy Scan") {
-            steps {
-                script {
-                    sh """
-                        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-                        aquasec/trivy image ${IMAGE_NAME}:latest \
-                        --no-progress --scanners vuln \
-                        --exit-code 0 --severity HIGH,CRITICAL --format table
-                    """
-                }
-            }
-        }
-
-        stage("Cleanup Artifacts") {
-            steps {
-                script {
-                    sh "docker rmi ${IMAGE_NAME}:${IMAGE_TAG} || true"
-                    sh "docker rmi ${IMAGE_NAME}:latest || true"
                 }
             }
         }
     }
 }
+
 
 
 
