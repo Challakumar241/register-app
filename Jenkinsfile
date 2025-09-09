@@ -12,6 +12,7 @@ pipeline {
         DOCKER_USER = "challakumar241"
         IMAGE_NAME = "${DOCKER_USER}/${APP_NAME}"
         IMAGE_TAG = "${RELEASE}-${BUILD_NUMBER}"
+        DOCKER_BUILDKIT = "1" // Enable BuildKit
     }
 
     stages {
@@ -63,15 +64,16 @@ pipeline {
                     def imageWithTag = "${IMAGE_NAME}:${IMAGE_TAG}"
                     def latestTag = "${IMAGE_NAME}:latest"
 
-                    sh "docker build -t ${imageWithTag} ."
-                    sh "docker tag ${imageWithTag} ${latestTag}"
+                    // Use sudo if needed, or ensure Jenkins agent has Docker access
+                    sh "sudo docker build -t ${imageWithTag} ."
+                    sh "sudo docker tag ${imageWithTag} ${latestTag}"
 
                     withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         sh """
-                            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                            docker push ${imageWithTag}
-                            docker push ${latestTag}
-                            docker logout
+                            echo "$DOCKER_PASS" | sudo docker login -u "$DOCKER_USER" --password-stdin
+                            sudo docker push ${imageWithTag}
+                            sudo docker push ${latestTag}
+                            sudo docker logout
                         """
                     }
                 }
@@ -81,7 +83,7 @@ pipeline {
         stage("Trivy Scan") {
             steps {
                 sh """
-                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                    sudo docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
                     aquasec/trivy image ${IMAGE_NAME}:latest \
                     --no-progress --scanners vuln --exit-code 0 \
                     --severity HIGH,CRITICAL --format table
@@ -91,10 +93,9 @@ pipeline {
 
         stage("Cleanup Artifacts") {
             steps {
-                sh "docker rmi ${IMAGE_NAME}:${IMAGE_TAG} || true"
-                sh "docker rmi ${IMAGE_NAME}:latest || true"
+                sh "sudo docker rmi ${IMAGE_NAME}:${IMAGE_TAG} || true"
+                sh "sudo docker rmi ${IMAGE_NAME}:latest || true"
             }
         }
     }
 }
-
