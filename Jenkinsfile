@@ -2,8 +2,8 @@ pipeline {
     agent { label 'Jenkins-Agent' }
 
     tools {
-        jdk 'java17'
-        maven 'maven3'
+        jdk 'Java17'
+        maven 'Maven3'
     }
 
     environment {
@@ -11,6 +11,7 @@ pipeline {
         DOCKER_USER = "challakumar241"
         IMAGE_NAME = "${DOCKER_USER}/challakumar241" // Your DockerHub repo
         IMAGE_TAG = "${RELEASE}-${BUILD_NUMBER}"
+        JENKINS_API_TOKEN = credentials("JENKINS_API_TOKEN")
     }
 
     stages {
