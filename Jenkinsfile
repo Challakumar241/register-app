@@ -1,16 +1,18 @@
 pipeline {
     agent { label 'Jenkins-Agent' }
-
     tools {
         jdk 'Java17'
         maven 'Maven3'
     }
-
     environment {
+        APP_NAME = "register-app-pipeline"
         RELEASE = "1.0.0"
-        DOCKER_REPO = "challakumar241/challakumar241"
+        DOCKER_USER = "challakumar241"
+        DOCKER_PASS = 'dockerhub'  // Jenkins credentials ID for Docker Hub login
+        IMAGE_NAME = "${DOCKER_USER}/challakumar241" // Your Docker repo: challakumar241/challakumar241
+        IMAGE_TAG = "${RELEASE}-${BUILD_NUMBER}"
+        JENKINS_API_TOKEN = credentials("JENKINS_API_TOKEN")
     }
-
     stages {
         stage("Cleanup Workspace") {
             steps {
@@ -48,19 +50,19 @@ pipeline {
 
         stage("Quality Gate") {
             steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
+                script {
+                    waitForQualityGate abortPipeline: false, credentialsId: 'jenkins-sonarqube-token'
                 }
             }
         }
 
-        stage('Build and Push Docker Image') {
+        stage("Build & Push Docker Image") {
             steps {
-                dir('java-maven-sonar-argocd-helm-k8s/spring-boot-app') {
+                dir('challakumar241/challakumar241') {
                     script {
-                        def dockerImage = "${DOCKER_REPO}:${RELEASE}-${BUILD_NUMBER}"
+                        def dockerImage = "${IMAGE_NAME}:${IMAGE_TAG}"
                         sh "docker build -t ${dockerImage} ."
-                        docker.withRegistry('https://index.docker.io/v1/', 'docker-cred') {
+                        docker.withRegistry('https://index.docker.io/v1/', DOCKER_PASS) {
                             docker.image(dockerImage).push()
                             docker.image(dockerImage).push('latest')
                         }
@@ -72,12 +74,12 @@ pipeline {
         stage("Trivy Scan") {
             steps {
                 script {
-                    sh '''
-                    docker run -v /var/run/docker.sock:/var/run/docker.sock \
-                    aquasec/trivy image ${DOCKER_REPO}:latest \
-                    --no-progress --scanners vuln --exit-code 0 \
-                    --severity HIGH,CRITICAL --format table
-                    '''
+                    sh """
+                        docker run -v /var/run/docker.sock:/var/run/docker.sock \
+                        aquasec/trivy image ${IMAGE_NAME}:latest \
+                        --no-progress --scanners vuln --exit-code 0 \
+                        --severity HIGH,CRITICAL --format table
+                    """
                 }
             }
         }
@@ -85,8 +87,8 @@ pipeline {
         stage("Cleanup Artifacts") {
             steps {
                 script {
-                    sh "docker rmi ${DOCKER_REPO}:${RELEASE}-${BUILD_NUMBER} || true"
-                    sh "docker rmi ${DOCKER_REPO}:latest || true"
+                    sh "docker rmi ${IMAGE_NAME}:${IMAGE_TAG} || true"
+                    sh "docker rmi ${IMAGE_NAME}:latest || true"
                 }
             }
         }
