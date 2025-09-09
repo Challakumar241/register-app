@@ -1,101 +1,88 @@
 pipeline {
-    agent { label 'Jenkins-Agent' }
+  agent any
 
-    tools {
-        jdk 'Java17'
-        maven 'Maven3'
+  tools {
+    jdk 'Java17'
+    maven 'Maven3'
+  }
+
+  environment {
+    SONAR_URL = "http://13.203.92.38:9000" // Update if your SonarQube URL is different
+    DOCKER_IMAGE = "challakumar241/challakumar241:${BUILD_NUMBER}"
+    GIT_REPO_NAME = "register-app"
+    GIT_USER_NAME = "Challakumar241"
+  }
+
+  stages {
+    stage('Cleanup Workspace') {
+      steps {
+        cleanWs()
+      }
     }
 
-    environment {
-        APP_NAME = "register-app-pipeline"
-        RELEASE = "1.0.0"
-        DOCKER_USER = "challakumar241"
-        IMAGE_NAME = "${DOCKER_USER}/${APP_NAME}"
-        IMAGE_TAG = "${RELEASE}-${BUILD_NUMBER}"
-        DOCKER_BUILDKIT = "1" // Enable BuildKit
+    stage('Checkout') {
+      steps {
+        git branch: 'main', url: "https://github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git", credentialsId: 'github'
+      }
     }
 
-    stages {
-        stage("Cleanup Workspace") {
-            steps {
-                cleanWs()
-            }
-        }
-
-        stage("Checkout from SCM") {
-            steps {
-                git branch: 'main', credentialsId: 'github', url: 'https://github.com/Challakumar241/register-app'
-            }
-        }
-
-        stage("Build Application") {
-            steps {
-                sh "mvn clean package"
-            }
-        }
-
-        stage("Test Application") {
-            steps {
-                sh "mvn test"
-            }
-        }
-
-        stage("SonarQube Analysis") {
-            steps {
-                script {
-                    withSonarQubeEnv(credentialsId: 'jenkins-sonarqube-token') {
-                        sh "mvn sonar:sonar"
-                    }
-                }
-            }
-        }
-
-        stage("Quality Gate") {
-            steps {
-                script {
-                    waitForQualityGate abortPipeline: false, credentialsId: 'jenkins-sonarqube-token'
-                }
-            }
-        }
-
-        stage("Build & Push Docker Image") {
-            steps {
-                script {
-                    def imageWithTag = "${IMAGE_NAME}:${IMAGE_TAG}"
-                    def latestTag = "${IMAGE_NAME}:latest"
-
-                    // Use sudo if needed, or ensure Jenkins agent has Docker access
-                    sh "sudo docker build -t ${imageWithTag} ."
-                    sh "sudo docker tag ${imageWithTag} ${latestTag}"
-
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                        sh """
-                            echo "$DOCKER_PASS" | sudo docker login -u "$DOCKER_USER" --password-stdin
-                            sudo docker push ${imageWithTag}
-                            sudo docker push ${latestTag}
-                            sudo docker logout
-                        """
-                    }
-                }
-            }
-        }
-
-        stage("Trivy Scan") {
-            steps {
-                sh """
-                    sudo docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-                    aquasec/trivy image ${IMAGE_NAME}:latest \
-                    --no-progress --scanners vuln --exit-code 0 \
-                    --severity HIGH,CRITICAL --format table
-                """
-            }
-        }
-
-        stage("Cleanup Artifacts") {
-            steps {
-                sh "sudo docker rmi ${IMAGE_NAME}:${IMAGE_TAG} || true"
-                sh "sudo docker rmi ${IMAGE_NAME}:latest || true"
-            }
-        }
+    stage('Build and Test') {
+      steps {
+        sh 'mvn clean package'
+        sh 'mvn test'
+      }
     }
+
+    stage('Static Code Analysis') {
+      steps {
+        withCredentials([string(credentialsId: 'sonarqube', variable: 'SONAR_AUTH_TOKEN')]) {
+          sh 'mvn sonar:sonar -Dsonar.login=$SONAR_AUTH_TOKEN -Dsonar.host.url=$SONAR_URL'
+        }
+      }
+    }
+
+    stage('SonarQube Quality Gate') {
+      steps {
+        script {
+          waitForQualityGate abortPipeline: false, credentialsId: 'sonarqube'
+        }
+      }
+    }
+
+    stage('Build and Push Docker Image') {
+      steps {
+        script {
+          def imageTag = "challakumar241/challakumar241:${BUILD_NUMBER}"
+          def latestTag = "challakumar241/challakumar241:latest"
+
+          sh "docker build -t ${imageTag} ."
+          sh "docker tag ${imageTag} ${latestTag}"
+
+          docker.withRegistry('https://index.docker.io/v1/', 'dockerhub') {
+            docker.image(imageTag).push()
+            docker.image(latestTag).push()
+          }
+        }
+      }
+    }
+
+    stage('Trivy Security Scan') {
+      steps {
+        sh """
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+          aquasec/trivy image challakumar241/challakumar241:latest \
+          --no-progress --scanners vuln --exit-code 0 \
+          --severity HIGH,CRITICAL --format table
+        """
+      }
+    }
+
+    stage('Cleanup Docker Images') {
+      steps {
+        sh "docker rmi challakumar241/challakumar241:${BUILD_NUMBER} || true"
+        sh "docker rmi challakumar241/challakumar241:latest || true"
+      }
+    }
+  }
 }
+
