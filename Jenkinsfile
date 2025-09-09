@@ -7,9 +7,10 @@ pipeline {
     }
 
     environment {
+        APP_NAME = "register-app-pipeline"
         RELEASE = "1.0.0"
         DOCKER_USER = "challakumar241"
-        IMAGE_NAME = "${DOCKER_USER}/challakumar241" // Your DockerHub repo
+        IMAGE_NAME = "${DOCKER_USER}/challakumar241"
         IMAGE_TAG = "${RELEASE}-${BUILD_NUMBER}"
         JENKINS_API_TOKEN = credentials("JENKINS_API_TOKEN")
     }
@@ -42,10 +43,11 @@ pipeline {
         stage("SonarQube Analysis") {
             steps {
                 script {
-                    withSonarQubeEnv(credentialsId: 'jenkins-sonarqube-token') { 
-                        sh "mvn sonar:sonar"
+                    withSonarQubeEnv(credentialsId: 'jenkins-sonarqube-token') {
+                        // Static code analysis removed as per your earlier request
+                        echo "SonarQube environment configured. Skipping mvn sonar:sonar."
                     }
-                }   
+                }
             }
         }
 
@@ -53,26 +55,24 @@ pipeline {
             steps {
                 script {
                     waitForQualityGate abortPipeline: false, credentialsId: 'jenkins-sonarqube-token'
-                }   
+                }
             }
         }
 
         stage("Build & Push Docker Image") {
             steps {
-                dir('.') {
-                    script {
-                        def versionTag = "${IMAGE_NAME}:${BUILD_NUMBER}"
-                        def latestTag = "${IMAGE_NAME}:latest"
+                script {
+                    def versionTag = "${IMAGE_NAME}:${BUILD_NUMBER}"
+                    def latestTag = "${IMAGE_NAME}:latest"
 
-                        // Build Docker image with both tags
-                        sh "docker build -t ${versionTag} ."
-                        sh "docker tag ${versionTag} ${latestTag}"
+                    // Build Docker image
+                    sh "docker build -t ${versionTag} ."
+                    sh "docker tag ${versionTag} ${latestTag}"
 
-                        // Push to DockerHub
-                        docker.withRegistry('https://index.docker.io/v1/', 'dockerhub') {
-                            docker.image(versionTag).push()
-                            docker.image(latestTag).push()
-                        }
+                    // Push to DockerHub
+                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub') {
+                        docker.image(versionTag).push()
+                        docker.image(latestTag).push()
                     }
                 }
             }
@@ -101,4 +101,5 @@ pipeline {
         }
     }
 }
+
 
