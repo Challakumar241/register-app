@@ -39,11 +39,20 @@ pipeline {
         stage("SonarQube Analysis") {
             steps {
                 script {
-                    withSonarQubeEnv('SonarQube') {
+                    withSonarQubeEnv(credentialsId: 'jenkis-sonarqube-token') {
                         sh "mvn sonar:sonar"
                     }
                 }
             }
         }
+
+        stage("Quality Gate") {
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
     }
 }
+
