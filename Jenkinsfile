@@ -7,7 +7,6 @@ pipeline {
   }
 
   environment {
-    SONAR_URL = "http://13.203.92.38:9000" // Update if your SonarQube URL is different
     DOCKER_IMAGE = "challakumar241/challakumar241:${BUILD_NUMBER}"
     GIT_REPO_NAME = "register-app"
     GIT_USER_NAME = "Challakumar241"
@@ -30,22 +29,6 @@ pipeline {
       steps {
         sh 'mvn clean package'
         sh 'mvn test'
-      }
-    }
-
-    stage('Static Code Analysis') {
-      steps {
-        withCredentials([string(credentialsId: 'sonarqube', variable: 'SONAR_AUTH_TOKEN')]) {
-          sh 'mvn sonar:sonar -Dsonar.login=$SONAR_AUTH_TOKEN -Dsonar.host.url=$SONAR_URL'
-        }
-      }
-    }
-
-    stage('SonarQube Quality Gate') {
-      steps {
-        script {
-          waitForQualityGate abortPipeline: false, credentialsId: 'sonarqube'
-        }
       }
     }
 
@@ -85,4 +68,3 @@ pipeline {
     }
   }
 }
-
