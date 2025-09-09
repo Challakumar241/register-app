@@ -7,12 +7,8 @@ pipeline {
     }
 
     environment {
-        APP_NAME = "register-app-pipeline"
         RELEASE = "1.0.0"
-        DOCKER_USER = "challakumar241"
-        IMAGE_NAME = "${DOCKER_USER}/challakumar241"
-        IMAGE_TAG = "${RELEASE}-${BUILD_NUMBER}"
-        JENKINS_API_TOKEN = credentials("JENKINS_API_TOKEN")
+        DOCKER_REPO = "challakumar241/challakumar241"
     }
 
     stages {
@@ -44,8 +40,7 @@ pipeline {
             steps {
                 script {
                     withSonarQubeEnv(credentialsId: 'jenkins-sonarqube-token') {
-                        // Static code analysis removed as per your earlier request
-                        echo "SonarQube environment configured. Skipping mvn sonar:sonar."
+                        sh "mvn sonar:sonar"
                     }
                 }
             }
@@ -53,26 +48,22 @@ pipeline {
 
         stage("Quality Gate") {
             steps {
-                script {
-                    waitForQualityGate abortPipeline: false, credentialsId: 'jenkins-sonarqube-token'
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
                 }
             }
         }
 
-        stage("Build & Push Docker Image") {
+        stage('Build and Push Docker Image') {
             steps {
-                script {
-                    def versionTag = "${IMAGE_NAME}:${BUILD_NUMBER}"
-                    def latestTag = "${IMAGE_NAME}:latest"
-
-                    // Build Docker image
-                    sh "docker build -t ${versionTag} ."
-                    sh "docker tag ${versionTag} ${latestTag}"
-
-                    // Push to DockerHub
-                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub') {
-                        docker.image(versionTag).push()
-                        docker.image(latestTag).push()
+                dir('java-maven-sonar-argocd-helm-k8s/spring-boot-app') {
+                    script {
+                        def dockerImage = "${DOCKER_REPO}:${RELEASE}-${BUILD_NUMBER}"
+                        sh "docker build -t ${dockerImage} ."
+                        docker.withRegistry('https://index.docker.io/v1/', 'docker-cred') {
+                            docker.image(dockerImage).push()
+                            docker.image(dockerImage).push('latest')
+                        }
                     }
                 }
             }
@@ -82,10 +73,10 @@ pipeline {
             steps {
                 script {
                     sh '''
-                        docker run -v /var/run/docker.sock:/var/run/docker.sock \
-                        aquasec/trivy image challakumar241/challakumar241:latest \
-                        --no-progress --scanners vuln --exit-code 0 \
-                        --severity HIGH,CRITICAL --format table
+                    docker run -v /var/run/docker.sock:/var/run/docker.sock \
+                    aquasec/trivy image ${DOCKER_REPO}:latest \
+                    --no-progress --scanners vuln --exit-code 0 \
+                    --severity HIGH,CRITICAL --format table
                     '''
                 }
             }
@@ -94,12 +85,10 @@ pipeline {
         stage("Cleanup Artifacts") {
             steps {
                 script {
-                    sh "docker rmi ${IMAGE_NAME}:${BUILD_NUMBER} || true"
-                    sh "docker rmi ${IMAGE_NAME}:latest || true"
+                    sh "docker rmi ${DOCKER_REPO}:${RELEASE}-${BUILD_NUMBER} || true"
+                    sh "docker rmi ${DOCKER_REPO}:latest || true"
                 }
             }
         }
     }
 }
-
-
