@@ -61,7 +61,7 @@ pipeline {
                     script {
                         def dockerImage = "${IMAGE_NAME}:${IMAGE_TAG}"
                         sh "docker build -t ${dockerImage} ."
-                        docker.withRegistry('https://index.docker.io/v1/', DOCKER_PASS) {
+                        docker.withRegistry('https://index.docker.io/v1/', 'dockerhub') {
                             docker.image(dockerImage).push()
                             docker.image(dockerImage).push('latest')
                         }
